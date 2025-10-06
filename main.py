@@ -1,134 +1,105 @@
-# main.py — Orquestación 60/20/20 + Optimización (objetivo: Calmar)
-# Incluye silenciamiento de warnings, switches para pruebas rápidas
-# y un chequeo opcional de conteo de señales.
-
-import warnings
-import random
-import numpy as np
+# main.py
+# ------------------------------------------------------------
+# Driver: carga datos, split 60/20/20, random search en TRAIN
+# e informe de métricas en TRAIN/TEST/VALID con los mejores
+# parámetros encontrados en TRAIN.
+# ------------------------------------------------------------
+from __future__ import annotations
+import logging
 import pandas as pd
 
-from optimization import (
-    split_60_20_20,
-    random_search,
-    evaluate_with_params,
-    _build_with_params,   # usado sólo para el chequeo de señales
+from optlib import split_60_20_20, random_search, evaluate_with_params
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(levelname)s] %(message)s"
 )
 
-# =========================
-# CONFIGURACIÓN PRINCIPAL
-# =========================
-CSV_PATH = "Binance_BTCUSDT_1h.csv"
 
-# Silenciar ruido en consola
-warnings.filterwarnings("ignore", category=FutureWarning)
-warnings.filterwarnings("ignore", category=UserWarning)
-
-# Reproducibilidad
-random.seed(42)
-np.random.seed(42)
-
-# Ajustes para depuración rápida (modifíquelos a conveniencia)
-N_TRIALS = 20           # aumente (40–80) para el corrido final
-FOLDS = 3               # 3 usual; 2 si desea ir más rápido
-FAST_DEBUG_LAST = None  # ej. 20000 para usar sólo las últimas ~20k velas durante pruebas
+CSV_PATH = "Binance_BTCUSDT_1h.csv"   # ajusta si está en otra ruta
+N_TRIALS = 50
+SEED = 42
 
 
-# =========================
-# CARGA Y NORMALIZACIÓN
-# =========================
-def load_prices(path: str) -> pd.DataFrame:
-    """Carga CSV (formato Binance), normaliza columnas y fechas."""
-    try:
-        df = pd.read_csv(path, skiprows=1).copy()
-    except Exception:
-        df = pd.read_csv(path).copy()
+def _fmt_table(rows):
+    # filas: dict con keys iguales
+    df = pd.DataFrame(rows)
+    cols = ["Set", "Calmar", "Sharpe", "Sortino", "MaxDD", "WinRate",
+            "Trades", "Equity0", "EquityF"]
+    df = df[cols]
+    # Ancho fijo ascii
+    out = []
+    head = "  ".join(f"{c:>8}" for c in cols)
+    out.append(head)
+    for _, r in df.iterrows():
+        line = "  ".join(
+            [
+                f"{r['Set']:<8}",
+                f"{r['Calmar']:>8.4f}",
+                f"{r['Sharpe']:>8.4f}",
+                f"{r['Sortino']:>8.4f}",
+                f"{r['MaxDD']:>8.4f}",
+                f"{r['WinRate']:>8.4f}",
+                f"{int(r['Trades']):>8d}",
+                f"{r['Equity0']:>8.1f}",
+                f"{r['EquityF']:>8.1f}",
+            ]
+        )
+        out.append(line)
+    return "\n".join(out)
 
-    # Normalización de nombres
-    df.columns = [c.strip().replace(" ", "_") for c in df.columns]
-    df = df.rename(columns={"Date": "dt", "tradecount": "Trades"})
 
-    # Fecha
-    if "dt" in df.columns:
-        df["dt"] = pd.to_datetime(df["dt"], utc=True, errors="coerce")
-    elif "Unix" in df.columns:
-        df["dt"] = pd.to_datetime(df["Unix"], unit="ms", utc=True, errors="coerce")
-
-    # OHLC a numérico
-    for c in ("Open", "High", "Low", "Close"):
-        if c in df.columns:
-            df[c] = pd.to_numeric(df[c], errors="coerce")
-
-    # Limpieza/orden
-    df = (
-        df.dropna(subset=["dt", "Open", "High", "Low", "Close"])
-          .sort_values("dt")
-          .reset_index(drop=True)
+def load_data(path: str) -> pd.DataFrame:
+    data = pd.read_csv(path, skiprows=1).copy()
+    # Normaliza nombres
+    data.columns = [c.strip().replace(" ", "_") for c in data.columns]
+    # Renombres esperados
+    data = data.rename(
+        columns={
+            "Date": "dt",
+            "Open": "Open",
+            "High": "High",
+            "Low": "Low",
+            "Close": "Close",
+            "Volume_BTC": "Volume_BTC",
+            "Volume_USDT": "Volume_USDT",
+            "tradecount": "Trades",
+            "tradcount": "Trades",
+        }
     )
+    data["dt"] = pd.to_datetime(data["dt"], utc=True, errors="coerce")
+    data = data.dropna(subset=["dt"]).sort_values("dt").reset_index(drop=True)
+    # Columns mínimas
+    req = ["dt", "Open", "High", "Low", "Close"]
+    for c in req:
+        if c not in data.columns:
+            raise ValueError(f"Falta columna {c} en el CSV")
+    return data
 
-    # Recorte opcional para pruebas rápidas
-    if FAST_DEBUG_LAST:
-        df = df.tail(int(FAST_DEBUG_LAST)).reset_index(drop=True)
 
-    print(f"Rango temporal: {df['dt'].iloc[0]} → {df['dt'].iloc[-1]} | Filas: {len(df):,}")
-    return df
+def main():
+    logging.info("Cargando datos…")
+    df = load_data(CSV_PATH)
 
+    train, test, valid = split_60_20_20(df)
 
-# =========================
-# PROGRAMA PRINCIPAL
-# =========================
-def main(n_trials: int = N_TRIALS, folds: int = FOLDS) -> None:
-    # 1) Datos
-    data = load_prices(CSV_PATH)
-    train, test, valid = split_60_20_20(data)
-    print(f"Split -> TRAIN: {len(train):,} | TEST: {len(test):,} | VALID: {len(valid):,}")
+    logging.info("Optimizando (Random Search baseline)…")
+    best_params = random_search(train, n_iter=N_TRIALS, seed=SEED)
 
-    # 2) Optimización por Calmar con walk-forward
-    best_params = random_search(train, n_trials=n_trials, folds=folds)
+    logging.info("Mejores parámetros (TRAIN):")
+    for k, v in best_params.items():
+        logging.info(f"  {k}: {v}")
 
-    # --- Chequeo opcional de señales para evitar 0 trades por filtros demasiado duros ---
-    chk_tr = _build_with_params(train, best_params)
-    chk_te = _build_with_params(test, best_params)
-    chk_va = _build_with_params(valid, best_params)
-    print(
-        f"\nConteo de señales  ->  "
-        f"TRAIN (L:{int(chk_tr['long_signal'].sum())}, S:{int(chk_tr['short_signal'].sum())}) | "
-        f"TEST (L:{int(chk_te['long_signal'].sum())}, S:{int(chk_te['short_signal'].sum())}) | "
-        f"VALID (L:{int(chk_va['long_signal'].sum())}, S:{int(chk_va['short_signal'].sum())})\n"
-    )
-
-    # 3) Evaluación con parámetros fijos en cada segmento
     rows = []
-    for name, df in (("TRAIN", train), ("TEST", test), ("VALID", valid)):
-        bt, met = evaluate_with_params(df, best_params)
-        rows.append({
-            "Set": name,
-            "Calmar": met["Calmar"],
-            "Sharpe": met["Sharpe"],
-            "Sortino": met["Sortino"],
-            "MaxDD": met["MaxDD"],
-            "WinRate": met["WinRate"],
-            "Trades": met["Trades"],
-            "Equity0": met["Equity0"],
-            "EquityF": met["EquityF"],
-        })
-
-    res = pd.DataFrame(
-        rows,
-        columns=["Set", "Calmar", "Sharpe", "Sortino", "MaxDD", "WinRate", "Trades", "Equity0", "EquityF"]
-    )
+    for name, part in [("TRAIN", train), ("TEST", test), ("VALID", valid)]:
+        _, metrics = evaluate_with_params(part, best_params, start_capital=10_000)
+        row = {"Set": name}
+        row.update(metrics)
+        rows.append(row)
 
     print("\n=== Resultados por segmento (parámetros fijos encontrados en TRAIN) ===")
-    print(res.to_string(index=False))
-
-    # 4) Guardado
-    res.to_csv("results_60_20_20.csv", index=False)
-    pd.Series(best_params).to_json("best_params.json", indent=2)
-    print("\nGuardado: results_60_20_20.csv y best_params.json")
+    print(_fmt_table(rows))
 
 
 if __name__ == "__main__":
     main()
-
-
-
-

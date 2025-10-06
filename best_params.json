@@ -1,0 +1,16 @@
+{
+  "rsi_window": 15,
+  "rsi_upper": 58,
+  "rsi_lower": 36,
+  "donch_window": 51,
+  "adx_thr": 23.7835394266242,
+  "ema_trend_win": 252,
+  "min_chan_pct": 0.007460897838524227,
+  "confirm_n": 1,
+  "risk_frac": 0.009797296377167433,
+  "pos_cap": 0.10446958291571055,
+  "atr_q": 0.6046594937009009,
+  "atr_sl": 3.911781633827397,
+  "atr_tp": 4.619411863577386,
+  "hold_min": 34
+}
