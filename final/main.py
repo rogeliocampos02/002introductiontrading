@@ -7,26 +7,24 @@ from __future__ import annotations
 import json
 import logging
 import os
-import warnings  # para silenciar FutureWarning
+import warnings
 import pandas as pd
 
-from optlib import split_60_20_20, random_search, evaluate_with_params
-from plots import plot_equity, plot_drawdown, save_monthly_returns_csv
-from calmar import total_return_pct  # % de rendimiento total
+from .optlib import split_60_20_20, random_search, evaluate_with_params
+from .plots import plot_equity, plot_drawdown, save_monthly_returns_csv
+from .calmar import total_return_pct
 
 # === CONFIG ===
 CSV_PATH   = "Binance_BTCUSDT_1h.csv"
 N_TRIALS   = 50
 SEED       = 42
-SHOW_PLOTS = True            
+SHOW_PLOTS = True
 OUT_DIR    = "figs"
 
-SHOW_WINDOWS    = True       # abre ventanas de Matplotlib
-OPEN_AFTER_SAVE = False      # abre los PNG con el visor del SO
+SHOW_WINDOWS    = True
+OPEN_AFTER_SAVE = False
 
-# Silenciar todo lo que no sea error
 logging.basicConfig(level=logging.ERROR, format="[%(levelname)s] %(message)s")
-# Silenciar FutureWarning de pandas (por cambios futuros de downcasting, etc.)
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 
@@ -86,41 +84,34 @@ def load_data(path: str) -> pd.DataFrame:
 
 
 def main() -> None:
-    # 1) Datos
     df = load_data(CSV_PATH)
     train, test, valid = split_60_20_20(df)
 
-    # 2) Optimización en TRAIN
     best_params = random_search(train, n_iter=N_TRIALS, seed=SEED)
 
-    # Guardar mejores parámetros para poder revertir fácilmente
     with open("best_params.json", "w", encoding="utf-8") as f:
         json.dump(best_params, f, ensure_ascii=False, indent=2)
 
-    # 3) Evaluación con los parámetros fijos
     rows = []
-    by_set_bt = {}  # guardamos los backtests para graficar
+    by_set_bt = {}
 
     for name, part in [("TRAIN", train), ("TEST", test), ("VALID", valid)]:
         bt, metrics = evaluate_with_params(part, best_params, start_capital=10_000)
-        metrics["ReturnPct"] = total_return_pct(bt["equity"])  # añadir %
+        metrics["ReturnPct"] = total_return_pct(bt["equity"])
         row = {"Set": name}
         row.update(metrics)
         rows.append(row)
         by_set_bt[name] = bt
 
-    # 4) Resumen 
     print("\n=== Resultados por segmento (parámetros fijos encontrados en TRAIN) ===")
     print(_fmt_table(rows))
 
-    # Guardar resultados a CSV 
     cols_csv = [
         "Set", "Calmar", "Sharpe", "Sortino", "MaxDD",
         "WinRate", "Trades", "Equity0", "EquityF", "ReturnPct"
     ]
     pd.DataFrame(rows)[cols_csv].to_csv("results_60_20_20.csv", index=False)
 
-    # 5) Gráficas
     if SHOW_PLOTS:
         os.makedirs(OUT_DIR, exist_ok=True)
         for name, bt in by_set_bt.items():

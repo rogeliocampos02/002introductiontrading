@@ -1,0 +1,16 @@
+{
+  "ema_fast": 13,
+  "ema_slow": 25,
+  "rsi_window": 26,
+  "atr_window": 17,
+  "donch_window": 37,
+  "rsi_upper": 65.03466667444421,
+  "rsi_lower": 33.21355211055658,
+  "atr_q": 0.379387109235015,
+  "pos_frac": 0.38065427217420134,
+  "atr_sl": 3.427607733313211,
+  "atr_tp": 5.418013078935383,
+  "hold_min": 31,
+  "fee": 0.00125,
+  "start_capital": 10000
+}

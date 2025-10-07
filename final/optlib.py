@@ -2,17 +2,16 @@
 # ------------------------------------------------------------
 # Split de datos, evaluación con parámetros y Random Search
 # ------------------------------------------------------------
-from __future__ import annotations
-import random
-from typing import Dict, Tuple
 
+from __future__ import annotations
+
+import random  # <-- NECESARIO (lo usas en random_search)
 import numpy as np
 import pandas as pd
+from . import createsignals as signals
 
-import createsignals as signals
-from backtesting import BTConfig, backtest
-from calmar import sharpe, sortino, calmar, max_drawdown, win_rate
-
+from .backtesting import BTConfig, backtest
+from .calmar import sharpe, sortino, calmar, max_drawdown, win_rate
 
 def split_60_20_20(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     n = len(df)
