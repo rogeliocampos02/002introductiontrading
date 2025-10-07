@@ -68,3 +68,28 @@ def win_rate(trade_pnls: list[float]) -> float:
         return 0.0
     wins = sum(1 for x in trade_pnls if x > 0)
     return wins / max(len(trade_pnls), 1)
+
+# --- % de rendimiento total sobre el periodo ---
+def total_return_pct(equity) -> float:
+    """
+    Retorno total del periodo en %, usando la curva de 'equity'
+    (EquityF / Equity0 - 1) * 100
+    """
+    import numpy as np
+    import pandas as pd
+
+    if equity is None:
+        return 0.0
+    if isinstance(equity, (pd.Series, pd.DataFrame)):
+        if len(equity) == 0:
+            return 0.0
+        e0 = float(equity.iloc[0])
+        ef = float(equity.iloc[-1])
+    else:
+        # por si llega como lista/array
+        e0 = float(equity[0])
+        ef = float(equity[-1])
+
+    if e0 <= 0:
+        return 0.0
+    return float((ef / e0 - 1.0) * 100.0)

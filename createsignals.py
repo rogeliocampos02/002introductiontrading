@@ -1,7 +1,7 @@
 # createsignals.py
 # ------------------------------------------------------------
 # Cálculo de indicadores (EMA, RSI, ATR, Donchian) y señales
-# Reglas: 2-de-3 (Tendencia, Momento, Ruptura)
+# Reglas: 2-de-3 
 # ------------------------------------------------------------
 from __future__ import annotations
 import numpy as np
@@ -88,12 +88,15 @@ def add_signals(
     votes_long = s1_long + s2_long + s3_long
     votes_short = s1_short + s2_short + s3_short
 
-    # Desplazar 1 barra y rellenar False; astype(bool) con copy=False (silencia el FutureWarning)
-    out["long_signal"] = (votes_long >= 2).shift(1).fillna(False)
-    out["long_signal"] = out["long_signal"].astype("bool", copy=False)
+    # --- FIX de FutureWarning ---
+    # Evitamos fillna/astype después de shift usando fill_value en shift(),
+    # lo que conserva dtype boolean y elimina el NaN inicial sin downcasting.
+    long_raw = (votes_long >= 2)
+    short_raw = (votes_short >= 2)
 
-    out["short_signal"] = (votes_short >= 2).shift(1).fillna(False)
-    out["short_signal"] = out["short_signal"].astype("bool", copy=False)
+    out["long_signal"] = long_raw.shift(1, fill_value=False)
+    out["short_signal"] = short_raw.shift(1, fill_value=False)
+    # ----------------------------
 
     # Eliminar warm-up donde hay NaNs en indicadores
     out = out.dropna(

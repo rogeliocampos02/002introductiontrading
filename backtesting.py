@@ -137,7 +137,7 @@ def backtest(df: pd.DataFrame, cfg: BTConfig) -> pd.DataFrame:
                 entry_price = None
                 bars_held = 0
 
-                # Flip inmediato si aplica
+                # Flip de posición si aplica
                 if flip_long or flip_short:
                     equ = _equity_mark_to_market(px)
                     units = _units_affordable(px, equ)
